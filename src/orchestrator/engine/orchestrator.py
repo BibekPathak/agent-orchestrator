@@ -6,6 +6,8 @@ from typing import Any
 from ..agents.planner import PlannerAgent
 from ..agents.router import RouterAgent
 from ..agents.synthesizer import SynthesizerAgent
+from ..agents.research import ResearchAgent
+from ..agents.finance import FinanceAgent
 from ..core.agent import BaseAgent
 from ..core.state import ExecutionState
 from ..core.task import Plan, Task, TaskStatus
@@ -36,6 +38,11 @@ class AgentOrchestrator:
         self._agents[self._synthesizer.name] = self._synthesizer
         self._router.register_agent(self._planner)
         self._router.register_agent(self._synthesizer)
+        # Register default agents
+        research_agent = ResearchAgent(llm)
+        finance_agent = FinanceAgent(llm)
+        self.register_agent(research_agent)
+        self.register_agent(finance_agent)
 
     def register_agent(self, agent: BaseAgent) -> None:
         self._agents[agent.name] = agent
