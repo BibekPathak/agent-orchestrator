@@ -39,7 +39,7 @@ class HuggingFaceLLM(LLM):
         )
         self.client = AsyncInferenceClient(
             api_key=api_key,
-            model=self.config.model,
+            base_url="https://router.huggingface.co/v1",
         )
 
     async def generate(

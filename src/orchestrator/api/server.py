@@ -46,6 +46,21 @@ app.add_middleware(
 )
 
 
+@app.get("/")
+async def root() -> dict[str, Any]:
+    return {
+        "name": "AI Agent Orchestrator",
+        "version": "0.1.0",
+        "endpoints": {
+            "POST /run": "Execute a goal",
+            "GET /status/{session_id}": "Get session result",
+            "POST /agents/register": "Register a custom agent",
+            "GET /agents": "List registered agents",
+            "GET /health": "Health check",
+        },
+    }
+
+
 @app.post("/run", response_model=ExecuteResponse)
 async def execute(req: ExecuteRequest) -> dict[str, Any]:
     session_id = req.session_id or f"session_{uuid.uuid4().hex[:12]}"

@@ -7,8 +7,8 @@ from typing import Any
 
 @dataclass
 class LLMConfig:
-    provider: str = "openai"
-    model: str = "gpt-4o"
+    provider: str = "huggingface"
+    model: str = "Qwen/Qwen2.5-7B-Instruct"
     temperature: float = 0.3
     max_tokens: int = 4096
     api_key: str | None = None

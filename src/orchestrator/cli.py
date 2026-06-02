@@ -23,8 +23,8 @@ console = Console()
 @app.command()
 def run(
     goal: str,
-    model: str = "gpt-4o",
-    provider: str = "openai",
+    model: str = "Qwen/Qwen2.5-7B-Instruct",
+    provider: str = "huggingface",
     session: Optional[str] = None,
 ) -> None:
     """Execute a goal through the orchestrator."""
@@ -42,8 +42,8 @@ def run(
 def serve(
     host: str = "0.0.0.0",
     port: int = 8000,
-    model: str = "gpt-4o",
-    provider: str = "openai",
+    model: str = "Qwen/Qwen2.5-7B-Instruct",
+    provider: str = "huggingface",
 ) -> None:
     """Start the FastAPI server."""
     import uvicorn
@@ -60,8 +60,8 @@ def serve(
 
 @app.command()
 def interactive(
-    model: str = "gpt-4o",
-    provider: str = "openai",
+    model: str = "Qwen/Qwen2.5-7B-Instruct",
+    provider: str = "huggingface",
 ) -> None:
     """Interactive CLI session with the orchestrator."""
     setup_logging()
