@@ -3,7 +3,10 @@ from __future__ import annotations
 import asyncio
 from typing import Optional
 
+from dotenv import load_dotenv
 import typer
+
+load_dotenv()  # Load .env file for API keys
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel

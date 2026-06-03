@@ -28,6 +28,8 @@ def _openai_tool_to_hf(tool: dict[str, Any]) -> ChatCompletionInputTool:
 
 class HuggingFaceLLM(LLM):
     def __init__(self, config: LLMConfig | None = None) -> None:
+        from dotenv import load_dotenv
+        load_dotenv()
         self.config = config or LLMConfig(
             provider="huggingface",
             model="Qwen/Qwen2.5-7B-Instruct",
