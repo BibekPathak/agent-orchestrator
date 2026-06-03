@@ -8,6 +8,9 @@ from ..agents.router import RouterAgent
 from ..agents.synthesizer import SynthesizerAgent
 from ..agents.research import ResearchAgent
 from ..agents.finance import FinanceAgent
+from ..agents.coding import CodingAgent
+from ..agents.critic import CriticAgent
+from ..agents.reviewer import ReviewerAgent
 from ..core.agent import BaseAgent
 from ..core.state import ExecutionState
 from ..core.task import Plan, Task, TaskStatus
@@ -41,8 +44,14 @@ class AgentOrchestrator:
         # Register default agents
         research_agent = ResearchAgent(llm)
         finance_agent = FinanceAgent(llm)
+        coding_agent = CodingAgent(llm)
+        critic_agent = CriticAgent(llm)
+        reviewer_agent = ReviewerAgent(llm)
         self.register_agent(research_agent)
         self.register_agent(finance_agent)
+        self.register_agent(coding_agent)
+        self.register_agent(critic_agent)
+        self.register_agent(reviewer_agent)
 
     def register_agent(self, agent: BaseAgent) -> None:
         self._agents[agent.name] = agent

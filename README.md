@@ -36,6 +36,9 @@ Instead of relying on a single LLM to handle everything, the orchestrator:
 - **SynthesizerAgent**: Combines results into final coherent responses
 - **ResearchAgent**: Performs web research using search tools
 - **FinanceAgent**: Analyzes financial data and stock information
+- **CodingAgent**: Writes, runs, and debugs code using Python execution and file operation tools
+- **CriticAgent**: Reviews and critiques outputs from other agents, identifies flaws and suggests improvements
+- **ReviewerAgent**: Performs final validation on outputs, checking completeness, correctness, and consistency
 
 ### ✅ Multi-LLM Support
 - **OpenAI**: GPT models
@@ -92,18 +95,25 @@ For the goal: `"Analyze Tesla stock, find recent news, compare competitors, and 
    - Task 2: Gather latest Tesla news  
    - Task 3: Analyze Tesla stock metrics
    - Task 4: Research competitor companies (Ford, GM, etc.)
-   - Task 5: Compare Tesla vs competitors
-   - Task 6: Generate investment report
+   - Task 5: Write Python script to compare financial ratios
+   - Task 6: Review the financial analysis for accuracy
+   - Task 7: Final validation of the investment report
+   - Task 8: Generate investment report
 
 2. **Router Agent** assigns tasks:
    - Research tasks → ResearchAgent (with web search tool)
    - Finance tasks → FinanceAgent (with web search tool)
+   - Code tasks → CodingAgent (with Python + file tools)
+   - Review tasks → CriticAgent (identifies flaws, suggests improvements)
+   - Validation tasks → ReviewerAgent (final approval gate)
    - Report generation → SynthesizerAgent
 
 3. **Agents execute** using their tools:
    - ResearchAgent searches web for company info and news
    - FinanceAgent searches for financial data and stock metrics
-   - All agents can read/write files and execute Python code as needed
+   - CodingAgent writes and runs Python analysis scripts
+   - CriticAgent reviews outputs for accuracy and completeness
+   - ReviewerAgent performs final validation before output
 
 4. **Synthesizer Agent** combines all results into final report
 

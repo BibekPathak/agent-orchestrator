@@ -13,7 +13,16 @@ PLANNER_SYSTEM_PROMPT = """You are a planning agent. Given a user goal, decompos
 Each task must have:
 - A clear description of what to do
 - Its dependencies (list of task IDs it depends on)
-- The type of agent best suited (research, code, finance, write, analyze)
+- The type of agent best suited (research, code, finance, write, analyze, critic, reviewer)
+
+Available agent types:
+- research: for web research, fact-finding, gathering information
+- code: for writing, running, and debugging code
+- finance: for financial data analysis and stock information
+- write: for creating written content, reports, summaries
+- analyze: for data analysis and interpretation
+- critic: for reviewing and critiquing outputs from other agents
+- reviewer: for final validation and approval of completed work
 
 Respond ONLY with a JSON array of tasks in this format:
 [
@@ -37,9 +46,21 @@ Respond ONLY with a JSON array of tasks in this format:
   },
   {
     "id": "t4",
+    "description": "Review the financial analysis for accuracy",
+    "agent": "critic",
+    "deps": ["t3"]
+  },
+  {
+    "id": "t5",
+    "description": "Final validation of the investment report",
+    "agent": "reviewer",
+    "deps": ["t4"]
+  },
+  {
+    "id": "t6",
     "description": "Generate investment report",
     "agent": "write",
-    "deps": ["t3"]
+    "deps": ["t5"]
   }
 ]
 
