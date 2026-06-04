@@ -11,7 +11,7 @@ from ..core.memory import Memory
 
 class ChromaMemory(Memory):
     def __init__(self, persist_dir: str | None = None) -> None:
-        persist_dir = persist_dir or os.getenv("CHROMA_PERSIST_DIR")
+        persist_dir = persist_dir or os.getenv("CHROMA_PERSIST_DIR") or "./chroma_db"
         self._client = chromadb.Client(Settings(
             persist_directory=persist_dir,
             anonymized_telemetry=False,

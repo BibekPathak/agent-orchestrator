@@ -16,6 +16,8 @@ from ..core.state import ExecutionState
 from ..core.task import Plan, Task, TaskStatus
 from ..llm.base import LLM
 from ..memory.short_term import ShortTermMemory
+from ..memory.long_term import ChromaMemory
+from ..observability import trace_span
 from ..tools import DelegateTaskTool
 from .retry import RetryPolicy, with_retry
 
@@ -34,7 +36,8 @@ class AgentOrchestrator:
         self._router = router or RouterAgent(llm)
         self._synthesizer = synthesizer or SynthesizerAgent(llm)
         self._agents: dict[str, BaseAgent] = {}
-        self._memory = ShortTermMemory()
+        self._short_term_memory = ShortTermMemory()
+        self._long_term_memory = ChromaMemory()
         self._retry_policy = retry_policy or RetryPolicy()
 
         self._agents[self._planner.name] = self._planner
@@ -72,24 +75,40 @@ class AgentOrchestrator:
 
     @property
     def memory(self) -> ShortTermMemory:
-        return self._memory
+        return self._short_term_memory
+
+    @property
+    def long_term_memory(self) -> ChromaMemory:
+        return self._long_term_memory
 
     async def execute(self, goal: str, session_id: str | None = None) -> str:
         session_id = session_id or f"session_{uuid.uuid4().hex[:12]}"
         state = ExecutionState(session_id=session_id, goal=goal)
 
-        plan = await self._planner.plan(goal)
-        for t in plan.tasks:
-            state.add_task(t)
-
-        await self._memory.save(f"{session_id}:plan", plan.model_dump(mode="json"))
+        async with trace_span("plan") as span:
+            if span:
+                span.set_attribute("session_id", session_id)
+                span.set_attribute("goal", goal)
+            plan = await self._planner.plan(goal)
+            for t in plan.tasks:
+                state.add_task(t)
+            await self._short_term_memory.save(f"{session_id}:plan", plan.model_dump(mode="json"))
+            await self._long_term_memory.save(f"plan:{session_id}", plan.model_dump(mode="json"))
 
         for wave in plan.topological_waves():
-            results = await self._execute_wave(wave, state)
-            state.context.update(results)
+            async with trace_span("execute_wave") as span:
+                if span:
+                    span.set_attribute("session_id", session_id)
+                    span.set_attribute("wave_tasks", str([t.id for t in wave]))
+                results = await self._execute_wave(wave, state)
+                state.context.update(results)
 
-        result = await self._synthesizer.synthesize(goal, state.completed_tasks)
-        await self._memory.save(f"{session_id}:result", result)
+        async with trace_span("synthesize") as span:
+            if span:
+                span.set_attribute("session_id", session_id)
+            result = await self._synthesizer.synthesize(goal, state.completed_tasks)
+            await self._short_term_memory.save(f"{session_id}:result", result)
+            await self._long_term_memory.save(f"result:{session_id}", result)
         return result
 
     async def _execute_wave(
@@ -109,14 +128,21 @@ class AgentOrchestrator:
             state.update_task(task.id, status=TaskStatus.RUNNING, agent=agent_name)
 
             try:
-                result = await with_retry(
-                    agent.run,
-                    task=task,
-                    state=state,
-                    policy=self._retry_policy,
-                )
-                state.update_task(task.id, status=TaskStatus.COMPLETED, result=result)
-                return task.id, result
+                async with trace_span("run_task") as span:
+                    if span:
+                        span.set_attribute("task_id", task.id)
+                        span.set_attribute("task_description", task.description)
+                        span.set_attribute("agent", agent_name)
+                    result = await with_retry(
+                        agent.run,
+                        task=task,
+                        state=state,
+                        policy=self._retry_policy,
+                    )
+                    if span:
+                        span.set_attribute("status", "completed")
+                    state.update_task(task.id, status=TaskStatus.COMPLETED, result=result)
+                    return task.id, result
             except Exception as e:
                 state.update_task(task.id, status=TaskStatus.FAILED, error=str(e))
                 return task.id, None
