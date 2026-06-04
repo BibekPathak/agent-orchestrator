@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
 
-from .task import Task
+from .task import TaskNode
 from ..core.state import ExecutionState
 
 
@@ -15,7 +15,7 @@ class BaseAgent(ABC):
     tools: list = field(default_factory=list)
 
     @abstractmethod
-    async def run(self, task: Task, state: ExecutionState | None = None) -> str:
+    async def run(self, task: TaskNode, state: ExecutionState | None = None) -> str:
         ...
 
     def to_registration(self) -> dict[str, Any]:

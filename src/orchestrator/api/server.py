@@ -53,6 +53,8 @@ async def root() -> dict[str, Any]:
         "version": "0.1.0",
         "endpoints": {
             "POST /run": "Execute a goal",
+            "POST /dag": "Generate DAG for a goal (no execution)",
+            "GET /dag/{session_id}": "Get DAG for existing session",
             "GET /status/{session_id}": "Get session result",
             "POST /agents/register": "Register a custom agent",
             "GET /agents": "List registered agents",
@@ -117,3 +119,22 @@ async def list_agents() -> list[dict[str, Any]]:
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.post("/dag")
+async def get_dag(req: ExecuteRequest) -> dict[str, Any]:
+    """Generate and return DAG for a goal without executing."""
+    dag = app.state.orchestrator.get_dag(req.goal)
+    return dag
+
+
+@app.get("/dag/{session_id}")
+async def get_session_dag(session_id: str) -> dict[str, Any]:
+    """Get the DAG for an existing session."""
+    plan_data = await app.state.orchestrator.memory.load(f"{session_id}:plan")
+    if plan_data is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    from ..core.task import Plan
+    plan = Plan.model_validate(plan_data)
+    return plan.to_dag()

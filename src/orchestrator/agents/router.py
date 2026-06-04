@@ -4,7 +4,7 @@ from typing import Any
 
 from ..core.agent import BaseAgent
 from ..core.state import ExecutionState
-from ..core.task import Task
+from ..core.task import TaskNode
 from ..llm.base import LLM
 
 ROUTER_SYSTEM_PROMPT = """You are a router agent. Given a task description and a list of available agents, select the best agent to handle the task.

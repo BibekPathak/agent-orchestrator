@@ -5,15 +5,16 @@ from typing import Any
 
 from ..core.agent import BaseAgent
 from ..core.state import ExecutionState
-from ..core.task import Plan, Task, TaskStatus
+from ..core.task import Plan, TaskNode, TaskStatus
 from ..llm.base import LLM
 
-PLANNER_SYSTEM_PROMPT = """You are a planning agent. Given a user goal, decompose it into a sequence of specific, actionable tasks.
+PLANNER_SYSTEM_PROMPT = """You are a planning agent. Given a user goal, decompose it into a sequence of specific, actionable tasks in a DAG (Directed Acyclic Graph) structure.
 
 Each task must have:
 - A clear description of what to do
 - Its dependencies (list of task IDs it depends on)
 - The type of agent best suited (research, code, finance, write, analyze, critic, reviewer)
+- Whether it requires human approval (requires_approval: true/false)
 
 Available agent types:
 - research: for web research, fact-finding, gathering information
@@ -24,47 +25,61 @@ Available agent types:
 - critic: for reviewing and critiquing outputs from other agents
 - reviewer: for final validation and approval of completed work
 
-Respond ONLY with a JSON array of tasks in this format:
+IMPORTANT: Use requires_approval: true for dangerous operations like:
+- Deleting databases or files
+- Deploying code to production
+- Sending emails or messages
+- Creating cloud resources
+- Making financial transactions
+
+Example output format:
 [
   {
     "id": "t1",
     "description": "Collect company info on Nvidia",
     "agent": "research",
-    "deps": []
+    "deps": [],
+    "requires_approval": false
   },
   {
     "id": "t2",
     "description": "Gather latest news about Nvidia",
     "agent": "research",
-    "deps": []
+    "deps": [],
+    "requires_approval": false
   },
   {
     "id": "t3",
     "description": "Analyze stock metrics for Nvidia",
     "agent": "finance",
-    "deps": ["t1", "t2"]
+    "deps": ["t1", "t2"],
+    "requires_approval": false
   },
   {
     "id": "t4",
-    "description": "Review the financial analysis for accuracy",
-    "agent": "critic",
-    "deps": ["t3"]
+    "description": "Delete production database",
+    "agent": "code",
+    "deps": [],
+    "requires_approval": true
   },
   {
     "id": "t5",
-    "description": "Final validation of the investment report",
-    "agent": "reviewer",
-    "deps": ["t4"]
+    "description": "Review the financial analysis for accuracy",
+    "agent": "critic",
+    "deps": ["t3"],
+    "requires_approval": false
   },
   {
     "id": "t6",
-    "description": "Generate investment report",
-    "agent": "write",
-    "deps": ["t5"]
+    "description": "Final validation of the investment report",
+    "agent": "reviewer",
+    "deps": ["t5"],
+    "requires_approval": true
   }
 ]
 
 Dependencies mean: a task should only run AFTER all its dependencies are complete.
+The DAG is executed in topological waves - tasks with no pending dependencies can run in parallel.
 Use deps: [] for tasks that can start immediately."""
 
 
@@ -101,12 +116,13 @@ class PlannerAgent(BaseAgent):
 
         tasks = []
         for td in tasks_data:
-            tasks.append(Task(
+            tasks.append(TaskNode(
                 id=td.get("id", f"t_{uuid.uuid4().hex[:6]}"),
                 description=td["description"],
                 agent=td.get("agent"),
                 deps=td.get("deps", []),
                 status=TaskStatus.PENDING,
+                requires_approval=td.get("requires_approval", False),
             ))
 
         return Plan(goal=goal, tasks=tasks)

@@ -44,8 +44,8 @@ class DelegateTaskTool(Tool):
         target_agent = self._orchestrator._agents[agent_name]
 
         try:
-            from ..core.task import Task, TaskStatus
-            task = Task(
+            from ..core.task import TaskNode, TaskStatus
+            task = TaskNode(
                 id=f"delegated_{id(task_description)}",
                 description=task_description,
                 agent=agent_name,

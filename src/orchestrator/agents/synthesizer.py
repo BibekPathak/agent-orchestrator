@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from ..core.agent import BaseAgent
 from ..core.state import ExecutionState
-from ..core.task import Task
+from ..core.task import TaskNode
 from ..llm.base import LLM
 
 SYNTHESIZER_SYSTEM_PROMPT = """You are a synthesizer agent. Given a user's original goal and the results from multiple completed tasks, combine them into a coherent, well-structured final response.
