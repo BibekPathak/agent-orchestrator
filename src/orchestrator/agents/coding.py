@@ -7,7 +7,10 @@ from ..core.agent import BaseAgent
 from ..core.state import ExecutionState
 from ..llm.base import LLM
 from ..tools import (
+    DatabaseTool,
+    DelegateTaskTool,
     EditFileTool,
+    GitHubTool,
     ListDirectoryTool,
     PythonExecutionTool,
     ReadFileTool,
@@ -16,7 +19,7 @@ from ..tools import (
 
 
 class CodingAgent(BaseAgent):
-    def __init__(self, llm: LLM, name: str = "coding", description: str = "Writes, runs, and debugs code using Python execution and file operation tools") -> None:
+    def __init__(self, llm: LLM, name: str = "coding", description: str = "Writes, runs, and debugs code using Python execution and file operation tools. Can also interact with GitHub, databases, and delegate tasks to other agents.") -> None:
         super().__init__(
             name=name,
             description=description,
@@ -26,6 +29,9 @@ class CodingAgent(BaseAgent):
                 WriteFileTool(),
                 EditFileTool(),
                 ListDirectoryTool(),
+                GitHubTool(),
+                DatabaseTool(),
+                DelegateTaskTool(),
             ],
         )
         self._llm = llm
@@ -41,6 +47,9 @@ class CodingAgent(BaseAgent):
 - write_file: Write content to a file
 - edit_file: Edit a file by replacing specific text
 - list_directory: List contents of a directory
+- github: Interact with GitHub repositories (list repos, read/write files, create issues/PRs, search code)
+- database: Execute SQL queries against a local SQLite database
+- delegate_task: Delegate a sub-task to another agent (research, finance, critic, reviewer, etc.)
 
 Given a coding task, decide which tools to use and in what order to accomplish the goal.
 You may use multiple tools sequentially. After using tools, synthesize the results into a final answer."""

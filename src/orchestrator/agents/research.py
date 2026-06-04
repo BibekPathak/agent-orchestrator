@@ -5,7 +5,7 @@ from typing import Any
 from ..core.agent import BaseAgent
 from ..core.state import ExecutionState
 from ..llm.base import LLM
-from ..tools import WebSearchTool
+from ..tools import DelegateTaskTool, WebSearchTool
 
 
 class ResearchAgent(BaseAgent):
@@ -13,7 +13,7 @@ class ResearchAgent(BaseAgent):
         super().__init__(
             name=name,
             description=description,
-            tools=[WebSearchTool()]
+            tools=[WebSearchTool(), DelegateTaskTool()]
         )
         self._llm = llm
 
@@ -26,9 +26,12 @@ class ResearchAgent(BaseAgent):
         tools_schema = [tool.to_llm_tool() for tool in self.tools]
         
         # First LLM call: decide whether to use a tool and which one
-        system_prompt = """You are a research agent. You have access to a web search tool. 
-        Given a query, decide if you need to search the web. If yes, return a tool call to web_search with the query.
-        If you can answer without searching, return a text response."""
+        system_prompt = """You are a research agent. You have access to the following tools:
+- web_search: Search the web for current information
+- delegate_task: Delegate a sub-task to another agent (e.g., coding, finance, critic, reviewer)
+
+Given a query, decide if you need to search the web. If yes, return a tool call to web_search with the query.
+You can also delegate specialized work to other agents. If you can answer without tools, return a text response."""
         content, tool_calls = await self._llm.generate(
             system_prompt=system_prompt,
             messages=[{"role": "user", "content": query}],

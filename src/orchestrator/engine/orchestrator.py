@@ -16,6 +16,7 @@ from ..core.state import ExecutionState
 from ..core.task import Plan, Task, TaskStatus
 from ..llm.base import LLM
 from ..memory.short_term import ShortTermMemory
+from ..tools import DelegateTaskTool
 from .retry import RetryPolicy, with_retry
 
 
@@ -52,6 +53,14 @@ class AgentOrchestrator:
         self.register_agent(coding_agent)
         self.register_agent(critic_agent)
         self.register_agent(reviewer_agent)
+        self._wire_delegate_tools()
+
+    def _wire_delegate_tools(self) -> None:
+        """Wire up DelegateTaskTool instances with orchestrator reference."""
+        for agent in self._agents.values():
+            for tool in getattr(agent, 'tools', []):
+                if isinstance(tool, DelegateTaskTool):
+                    tool.set_orchestrator(self)
 
     def register_agent(self, agent: BaseAgent) -> None:
         self._agents[agent.name] = agent

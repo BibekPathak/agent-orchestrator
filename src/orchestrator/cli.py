@@ -63,8 +63,8 @@ def serve(
 
 @app.command()
 def interactive(
-    model: str = "Qwen/Qwen2.5-7B-Instruct",
-    provider: str = "huggingface",
+    model: str = "openrouter/auto",
+    provider: str = "openrouter",
 ) -> None:
     """Interactive CLI session with the orchestrator."""
     setup_logging()

@@ -84,10 +84,20 @@ class PlannerAgent(BaseAgent):
         )
 
         import json
-        json_str = _extract_json(content)
-        tasks_data = json.loads(json_str)
-        if isinstance(tasks_data, dict):
-            tasks_data = tasks_data.get("tasks", [tasks_data])
+        tasks_data = _parse_plan(content)
+        if tasks_data is None:
+            content2, _ = await self._llm.generate(
+                system_prompt=PLANNER_SYSTEM_PROMPT + "\n\nCRITICAL: You MUST output valid JSON. Start with [.",
+                messages=[{"role": "user", "content": goal}],
+            )
+            tasks_data = _parse_plan(content2)
+        if tasks_data is None:
+            tasks_data = [{
+                "id": "t1",
+                "description": goal,
+                "agent": None,
+                "deps": [],
+            }]
 
         tasks = []
         for td in tasks_data:
@@ -102,25 +112,37 @@ class PlannerAgent(BaseAgent):
         return Plan(goal=goal, tasks=tasks)
 
 
-def _extract_json(text: str) -> str:
-    start_brace = text.find("{")
-    start_bracket = text.find("[")
-    if start_brace == -1 and start_bracket == -1:
-        return text
-    if start_bracket == -1 or (start_brace != -1 and start_brace < start_bracket):
-        start, open_ch, close_ch = start_brace, "{", "}"
-    else:
-        start, open_ch, close_ch = start_bracket, "[", "]"
-    if start == -1:
-        return text
-    depth = 0
-    end = start
-    for i, ch in enumerate(text[start:], start):
-        if ch == open_ch or (open_ch == "{" and ch == "["):
-            depth += 1
-        elif ch == close_ch or (close_ch == "}" and ch == "]"):
-            depth -= 1
-        if depth == 0:
-            end = i + 1
-            break
-    return text[start:end]
+def _parse_plan(text: str) -> list[dict] | None:
+    import json
+    if not text or not text.strip():
+        return None
+    # Try finding a JSON array [...]
+    for start_char, end_char in [("[", "]"), ("{", "}")]:
+        start = text.find(start_char)
+        if start >= 0:
+            depth = 0
+            for i, ch in enumerate(text[start:], start):
+                if ch == start_char:
+                    depth += 1
+                elif ch == end_char:
+                    depth -= 1
+                if depth == 0:
+                    try:
+                        candidate = text[start:i+1]
+                        data = json.loads(candidate)
+                        if isinstance(data, dict):
+                            data = data.get("tasks", [data])
+                        if isinstance(data, list):
+                            return data
+                    except json.JSONDecodeError:
+                        continue
+    # Try parsing the whole text
+    try:
+        data = json.loads(text.strip())
+        if isinstance(data, dict):
+            data = data.get("tasks", [data])
+        if isinstance(data, list):
+            return data
+    except json.JSONDecodeError:
+        pass
+    return None
