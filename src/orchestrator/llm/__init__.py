@@ -1,6 +1,7 @@
 from .anthropic_llm import AnthropicLLM
 from .base import LLM, LLMConfig
 from .huggingface_llm import HuggingFaceLLM
+from .mock_llm import MockLLM
 from .openai_llm import OpenAILLM
 from .openrouter_llm import OpenRouterLLM
 
@@ -9,6 +10,7 @@ __all__ = [
     "HuggingFaceLLM",
     "LLM",
     "LLMConfig",
+    "MockLLM",
     "OpenAILLM",
     "OpenRouterLLM",
 ]
@@ -24,4 +26,6 @@ def create_llm(config: LLMConfig | None = None) -> LLM:
         return HuggingFaceLLM(config)
     elif config.provider == "openrouter":
         return OpenRouterLLM(config)
+    elif config.provider == "mock":
+        return MockLLM(config)
     raise ValueError(f"Unsupported LLM provider: {config.provider}")

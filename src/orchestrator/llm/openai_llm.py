@@ -5,7 +5,7 @@ from typing import Any
 
 from openai import AsyncOpenAI
 
-from .base import LLM, LLMConfig
+from .base import LLM, LLMConfig, LLMUsage
 
 
 class OpenAILLM(LLM):
@@ -13,6 +13,13 @@ class OpenAILLM(LLM):
         self.config = config or LLMConfig(provider="openai")
         api_key = self.config.api_key or os.getenv("OPENAI_API_KEY")
         self.client = AsyncOpenAI(api_key=api_key)
+        self._usage = LLMUsage()
+
+    def get_usage(self) -> LLMUsage:
+        return self._usage
+
+    def reset_usage(self) -> None:
+        self._usage = LLMUsage()
 
     async def generate(
         self,

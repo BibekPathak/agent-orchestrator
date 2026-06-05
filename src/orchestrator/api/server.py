@@ -69,6 +69,13 @@ async def root() -> dict[str, Any]:
             "GET /cost/models": "Get costs by model",
             "GET /cost/pricing": "Get pricing models",
             "DELETE /cost": "Clear cost data",
+            "GET /evaluation/summary": "Get evaluation summary",
+            "GET /evaluation/agents": "Get all agent evaluations",
+            "GET /evaluation/agents/{name}": "Get agent evaluation",
+            "GET /evaluation/leaderboard": "Get agent leaderboard",
+            "GET /evaluation/sessions/{id}": "Get session evaluation",
+            "GET /evaluation/tasks": "Get task evaluations",
+            "DELETE /evaluation": "Clear evaluation data",
             "GET /status/{session_id}": "Get session result",
             "POST /agents/register": "Register a custom agent",
             "GET /agents": "List registered agents",
@@ -280,6 +287,63 @@ async def get_pricing() -> dict[str, Any]:
     """Get available pricing models."""
     from ..cost import MODEL_PRICING
     return MODEL_PRICING
+
+
+@app.get("/evaluation/summary")
+async def get_evaluation_summary() -> dict[str, Any]:
+    """Get evaluation summary."""
+    return app.state.orchestrator.evaluator.get_summary()
+
+
+@app.get("/evaluation/agents")
+async def get_agent_evaluations() -> dict[str, Any]:
+    """Get evaluations for all agents."""
+    return app.state.orchestrator.evaluator.get_agent_metrics()
+
+
+@app.get("/evaluation/agents/{agent_name}")
+async def get_agent_evaluation(agent_name: str) -> dict[str, Any]:
+    """Get evaluation for a specific agent."""
+    metrics = app.state.orchestrator.evaluator.get_agent_metrics(agent_name)
+    if not metrics:
+        raise HTTPException(status_code=404, detail=f"No evaluation found for agent: {agent_name}")
+    return metrics
+
+
+@app.get("/evaluation/leaderboard")
+async def get_leaderboard(limit: int = 10) -> list[dict[str, Any]]:
+    """Get agent leaderboard by success rate."""
+    return app.state.orchestrator.evaluator.get_leaderboard(limit=limit)
+
+
+@app.get("/evaluation/sessions/{session_id}")
+async def get_session_evaluation(session_id: str) -> dict[str, Any]:
+    """Get evaluation for a specific session."""
+    evaluation = app.state.orchestrator.evaluator.get_session_evaluation(session_id)
+    if evaluation is None:
+        raise HTTPException(status_code=404, detail=f"No evaluation found for session: {session_id}")
+    return evaluation
+
+
+@app.get("/evaluation/tasks")
+async def get_task_evaluations(
+    session_id: str | None = None,
+    agent_name: str | None = None,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    """Get task evaluations."""
+    return app.state.orchestrator.evaluator.get_task_evaluations(
+        session_id=session_id,
+        agent_name=agent_name,
+        limit=limit,
+    )
+
+
+@app.delete("/evaluation")
+async def clear_evaluation() -> dict[str, str]:
+    """Clear evaluation data."""
+    app.state.orchestrator.evaluator.clear()
+    return {"status": "cleared"}
 
 
 @app.delete("/cost")

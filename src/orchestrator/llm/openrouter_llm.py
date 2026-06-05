@@ -8,7 +8,7 @@ from typing import Any
 
 from openai import AsyncOpenAI
 
-from .base import LLM, LLMConfig
+from .base import LLM, LLMConfig, LLMUsage
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 # Fallback models to try when primary fails with rate/limit errors
@@ -42,8 +42,15 @@ class OpenRouterLLM(LLM):
             api_key=api_key,
             base_url=OPENROUTER_BASE_URL,
         )
+        self._usage = LLMUsage()
         # Try models in order: primary, then fallbacks
         self.model_priority = [self.config.model] + [m for m in FALLBACK_MODELS if m != self.config.model]
+
+    def get_usage(self) -> LLMUsage:
+        return self._usage
+
+    def reset_usage(self) -> None:
+        self._usage = LLMUsage()
 
     async def generate(
         self,

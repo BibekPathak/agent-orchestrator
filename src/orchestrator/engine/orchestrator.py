@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+import time
 from typing import Any
 
 from ..agents.planner import PlannerAgent
@@ -22,6 +23,7 @@ from ..tools import DelegateTaskTool
 from ..events import EventBus
 from ..marketplace import AgentMarketplace, AgentRegistration, AgentCapability, Capability
 from ..cost import CostTracker
+from ..evaluation import AgentEvaluator
 from .retry import RetryPolicy, with_retry
 
 
@@ -45,6 +47,7 @@ class AgentOrchestrator:
         self._event_bus = EventBus()
         self._marketplace = AgentMarketplace()
         self._cost_tracker = CostTracker()
+        self._evaluator = AgentEvaluator()
 
         self._agents[self._planner.name] = self._planner
         self._agents[self._router.name] = self._router
@@ -147,9 +150,14 @@ class AgentOrchestrator:
     def cost_tracker(self) -> CostTracker:
         return self._cost_tracker
 
+    @property
+    def evaluator(self) -> AgentEvaluator:
+        return self._evaluator
+
     async def execute(self, goal: str, session_id: str | None = None) -> str:
         session_id = session_id or f"session_{uuid.uuid4().hex[:12]}"
         state = ExecutionState(session_id=session_id, goal=goal)
+        start_time = time.time()
 
         from ..events.types import SessionStartedEvent, SessionCompletedEvent, SessionFailedEvent, WaveStartedEvent, WaveCompletedEvent
         
@@ -206,9 +214,40 @@ class AgentOrchestrator:
                 result=result,
             ))
             
+            # Record session evaluation
+            duration_ms = (time.time() - start_time) * 1000
+            completed_tasks = len(state.completed_tasks)
+            failed_tasks = len(state.failed_tasks)
+            total_tasks = len(plan.tasks)
+            
+            self._evaluator.record_session(
+                session_id=session_id,
+                goal=goal,
+                success=True,
+                duration_ms=duration_ms,
+                total_tasks=total_tasks,
+                completed_tasks=completed_tasks,
+                failed_tasks=failed_tasks,
+            )
+            
             return result
             
         except Exception as e:
+            # Record failed session evaluation
+            duration_ms = (time.time() - start_time) * 1000
+            total_tasks = len(state.tasks)
+            completed_tasks = len(state.completed_tasks)
+            
+            self._evaluator.record_session(
+                session_id=session_id,
+                goal=goal,
+                success=False,
+                duration_ms=duration_ms,
+                total_tasks=total_tasks,
+                completed_tasks=completed_tasks,
+                failed_tasks=total_tasks - completed_tasks,
+            )
+            
             await self._event_bus.publish(SessionFailedEvent(
                 session_id=session_id,
                 goal=goal,
@@ -299,6 +338,7 @@ class AgentOrchestrator:
             ))
 
             try:
+                start_time = time.time()
                 async with trace_span("run_task") as span:
                     if span:
                         span.set_attribute("task_id", task.id)
@@ -330,6 +370,16 @@ class AgentOrchestrator:
                             metadata={"task_id": task.id},
                         )
                     
+                    # Record task evaluation
+                    duration_ms = (time.time() - start_time) * 1000
+                    self._evaluator.record_task(
+                        task_id=task.id,
+                        agent_name=agent_name,
+                        session_id=state.session_id,
+                        success=True,
+                        duration_ms=duration_ms,
+                    )
+                    
                     if span:
                         span.set_attribute("status", "completed")
                     state.update_task(task.id, status=TaskStatus.COMPLETED, result=result)
@@ -344,7 +394,19 @@ class AgentOrchestrator:
                     
                     return task.id, result
             except Exception as e:
+                duration_ms = (time.time() - start_time) * 1000
                 state.update_task(task.id, status=TaskStatus.FAILED, error=str(e))
+                
+                # Record failed task evaluation
+                self._evaluator.record_task(
+                    task_id=task.id,
+                    agent_name=agent_name,
+                    session_id=state.session_id,
+                    success=False,
+                    duration_ms=duration_ms,
+                    error=str(e),
+                )
+                
                 await self._event_bus.publish(TaskFailedEvent(
                     task_id=task.id,
                     task_description=task.description,
