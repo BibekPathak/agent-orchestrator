@@ -58,6 +58,11 @@ async def root() -> dict[str, Any]:
             "GET /events": "Get event history",
             "GET /events/types": "Get available event types",
             "DELETE /events": "Clear event history",
+            "GET /marketplace/agents": "List marketplace agents",
+            "GET /marketplace/agents/{name}": "Get agent details",
+            "GET /marketplace/capabilities": "Get available capabilities",
+            "GET /marketplace/capabilities/{cap}/agents": "Get agents by capability",
+            "GET /marketplace/stats": "Get marketplace stats",
             "GET /status/{session_id}": "Get session result",
             "POST /agents/register": "Register a custom agent",
             "GET /agents": "List registered agents",
@@ -178,3 +183,47 @@ async def clear_events() -> dict[str, str]:
     """Clear event history."""
     app.state.orchestrator.event_bus.clear_history()
     return {"status": "cleared"}
+
+
+@app.get("/marketplace/agents")
+async def list_marketplace_agents() -> list[dict[str, Any]]:
+    """List all agents in marketplace."""
+    return [r.to_dict() for r in app.state.orchestrator.marketplace.list_all()]
+
+
+@app.get("/marketplace/agents/{name}")
+async def get_marketplace_agent(name: str) -> dict[str, Any]:
+    """Get agent details from marketplace."""
+    agent = app.state.orchestrator.marketplace.get(name)
+    if agent is None:
+        raise HTTPException(status_code=404, detail=f"Agent {name} not found")
+    return agent.to_dict()
+
+
+@app.get("/marketplace/capabilities")
+async def get_capabilities() -> list[str]:
+    """Get available capabilities."""
+    from ..marketplace.types import Capability
+    return [c.value for c in Capability]
+
+
+@app.get("/marketplace/capabilities/{capability}/agents")
+async def get_agents_by_capability(capability: str) -> list[dict[str, Any]]:
+    """Get agents with specific capability."""
+    from ..marketplace.types import Capability
+    try:
+        cap = Capability(capability)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid capability: {capability}")
+    
+    agents = app.state.orchestrator.marketplace.find_by_capability(cap)
+    return [a.to_dict() for a in agents]
+
+
+@app.get("/marketplace/stats")
+async def get_marketplace_stats() -> dict[str, Any]:
+    """Get marketplace statistics."""
+    return {
+        "total_agents": len(app.state.orchestrator.marketplace.list_all()),
+        "capabilities": app.state.orchestrator.marketplace.get_capability_stats(),
+    }

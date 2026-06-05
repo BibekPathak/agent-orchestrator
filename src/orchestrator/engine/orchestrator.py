@@ -20,6 +20,7 @@ from ..memory.long_term import ChromaMemory
 from ..observability import trace_span
 from ..tools import DelegateTaskTool
 from ..events import EventBus
+from ..marketplace import AgentMarketplace, AgentRegistration, AgentCapability, Capability
 from .retry import RetryPolicy, with_retry
 
 
@@ -41,12 +42,19 @@ class AgentOrchestrator:
         self._long_term_memory = ChromaMemory()
         self._retry_policy = retry_policy or RetryPolicy()
         self._event_bus = EventBus()
+        self._marketplace = AgentMarketplace()
 
         self._agents[self._planner.name] = self._planner
         self._agents[self._router.name] = self._router
         self._agents[self._synthesizer.name] = self._synthesizer
         self._router.register_agent(self._planner)
         self._router.register_agent(self._synthesizer)
+        
+        # Register agents with marketplace
+        self._register_agent_capabilities(self._planner, [Capability.PLANNING])
+        self._register_agent_capabilities(self._router, [Capability.ROUTING])
+        self._register_agent_capabilities(self._synthesizer, [Capability.SYNTHESIS])
+        
         # Register default agents
         research_agent = ResearchAgent(llm)
         finance_agent = FinanceAgent(llm)
@@ -58,7 +66,29 @@ class AgentOrchestrator:
         self.register_agent(coding_agent)
         self.register_agent(critic_agent)
         self.register_agent(reviewer_agent)
+        
+        # Register capabilities for default agents
+        self._register_agent_capabilities(research_agent, [Capability.RESEARCH, Capability.WEB_SEARCH])
+        self._register_agent_capabilities(finance_agent, [Capability.FINANCE, Capability.ANALYSIS])
+        self._register_agent_capabilities(coding_agent, [
+            Capability.CODING, Capability.CODE_EXECUTION, Capability.FILE_OPS,
+            Capability.GITHUB, Capability.DATABASE, Capability.WRITING
+        ])
+        self._register_agent_capabilities(critic_agent, [Capability.CRITIQUE, Capability.ANALYSIS])
+        self._register_agent_capabilities(reviewer_agent, [Capability.REVIEW, Capability.CRITIQUE])
+        
         self._wire_delegate_tools()
+    
+    def _register_agent_capabilities(self, agent: BaseAgent, capabilities: list[Capability]) -> None:
+        """Register agent with marketplace with given capabilities."""
+        registration = AgentRegistration(
+            name=agent.name,
+            description=agent.description,
+            capabilities=[
+                AgentCapability(capability=cap, score=1.0) for cap in capabilities
+            ],
+        )
+        self._marketplace.register(registration)
 
     def _wire_delegate_tools(self) -> None:
         """Wire up DelegateTaskTool instances with orchestrator reference."""
@@ -67,15 +97,29 @@ class AgentOrchestrator:
                 if isinstance(tool, DelegateTaskTool):
                     tool.set_orchestrator(self)
 
-    def register_agent(self, agent: BaseAgent) -> None:
+    def register_agent(self, agent: BaseAgent, capabilities: list[Capability] | None = None) -> None:
         self._agents[agent.name] = agent
         self._router.register_agent(agent)
         
         from ..events.types import AgentRegisteredEvent
-        self._event_bus.publish(AgentRegisteredEvent(
-            agent_name=agent.name,
-            agent_description=agent.description,
-        ))
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                asyncio.create_task(self._event_bus.publish(AgentRegisteredEvent(
+                    agent_name=agent.name,
+                    agent_description=agent.description,
+                )))
+            else:
+                asyncio.run(self._event_bus.publish(AgentRegisteredEvent(
+                    agent_name=agent.name,
+                    agent_description=agent.description,
+                )))
+        except RuntimeError:
+            pass
+        
+        if capabilities:
+            self._register_agent_capabilities(agent, capabilities)
 
     def register_agents(self, agents: list[BaseAgent]) -> None:
         for a in agents:
@@ -92,6 +136,10 @@ class AgentOrchestrator:
     @property
     def event_bus(self) -> EventBus:
         return self._event_bus
+
+    @property
+    def marketplace(self) -> AgentMarketplace:
+        return self._marketplace
 
     async def execute(self, goal: str, session_id: str | None = None) -> str:
         session_id = session_id or f"session_{uuid.uuid4().hex[:12]}"
