@@ -76,6 +76,9 @@ async def root() -> dict[str, Any]:
             "GET /evaluation/sessions/{id}": "Get session evaluation",
             "GET /evaluation/tasks": "Get task evaluations",
             "DELETE /evaluation": "Clear evaluation data",
+            "POST /debate/agent-vs-agent": "Run agent-vs-agent debate",
+            "POST /debate/critic-loop": "Run critic-reviser loop",
+            "GET /debate/types": "Get debate types",
             "GET /status/{session_id}": "Get session result",
             "POST /agents/register": "Register a custom agent",
             "GET /agents": "List registered agents",
@@ -344,6 +347,66 @@ async def clear_evaluation() -> dict[str, str]:
     """Clear evaluation data."""
     app.state.orchestrator.evaluator.clear()
     return {"status": "cleared"}
+
+
+from pydantic import BaseModel
+
+
+class DebateRequest(BaseModel):
+    topic: str
+    debate_type: str = "agent_vs_agent"
+    agent_a_name: str = "planner"
+    agent_a_prompt: str = "You are a logical thinker advocating for the motion."
+    agent_b_name: str = "critic"
+    agent_b_prompt: str = "You are a skeptic questioning the motion."
+    initial_response: str | None = None
+    max_rounds: int = 5
+
+
+class CriticLoopRequest(BaseModel):
+    topic: str
+    initial_response: str
+    max_rounds: int = 5
+
+
+@app.post("/debate/agent-vs-agent")
+async def run_agent_vs_agent_debate(req: DebateRequest) -> dict[str, Any]:
+    """Run an agent-vs-agent debate."""
+    from ..debate import DebateRunner, DebateType
+    
+    runner = DebateRunner(app.state.orchestrator._llm, max_rounds=req.max_rounds)
+    
+    result = await runner.run_agent_vs_agent(
+        topic=req.topic,
+        agent_a_name=req.agent_a_name,
+        agent_a_prompt=req.agent_a_prompt,
+        agent_b_name=req.agent_b_name,
+        agent_b_prompt=req.agent_b_prompt,
+    )
+    
+    return result.to_dict()
+
+
+@app.post("/debate/critic-loop")
+async def run_critic_loop(req: CriticLoopRequest) -> dict[str, Any]:
+    """Run a critic-reviser loop to improve a response."""
+    from ..debate import DebateRunner
+    
+    runner = DebateRunner(app.state.orchestrator._llm, max_rounds=req.max_rounds)
+    
+    result = await runner.run_critic_loop(
+        topic=req.topic,
+        initial_response=req.initial_response,
+    )
+    
+    return result.to_dict()
+
+
+@app.get("/debate/types")
+async def get_debate_types() -> list[str]:
+    """Get available debate types."""
+    from ..debate.types import DebateType
+    return [dt.value for dt in DebateType]
 
 
 @app.delete("/cost")
