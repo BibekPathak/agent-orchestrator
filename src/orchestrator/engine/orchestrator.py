@@ -21,6 +21,7 @@ from ..observability import trace_span
 from ..tools import DelegateTaskTool
 from ..events import EventBus
 from ..marketplace import AgentMarketplace, AgentRegistration, AgentCapability, Capability
+from ..cost import CostTracker
 from .retry import RetryPolicy, with_retry
 
 
@@ -43,6 +44,7 @@ class AgentOrchestrator:
         self._retry_policy = retry_policy or RetryPolicy()
         self._event_bus = EventBus()
         self._marketplace = AgentMarketplace()
+        self._cost_tracker = CostTracker()
 
         self._agents[self._planner.name] = self._planner
         self._agents[self._router.name] = self._router
@@ -140,6 +142,10 @@ class AgentOrchestrator:
     @property
     def marketplace(self) -> AgentMarketplace:
         return self._marketplace
+
+    @property
+    def cost_tracker(self) -> CostTracker:
+        return self._cost_tracker
 
     async def execute(self, goal: str, session_id: str | None = None) -> str:
         session_id = session_id or f"session_{uuid.uuid4().hex[:12]}"
@@ -305,6 +311,25 @@ class AgentOrchestrator:
                         state=state,
                         policy=self._retry_policy,
                     )
+                    
+                    # Track cost
+                    usage = self._llm.get_usage()
+                    if usage.total_tokens > 0:
+                        from ..cost import TokenUsage
+                        token_usage = TokenUsage(
+                            prompt_tokens=usage.prompt_tokens,
+                            completion_tokens=usage.completion_tokens,
+                            total_tokens=usage.total_tokens,
+                        )
+                        self._cost_tracker.record(
+                            session_id=state.session_id,
+                            agent_name=agent_name,
+                            model=self._llm.config.model,
+                            provider=self._llm.config.provider,
+                            usage=token_usage,
+                            metadata={"task_id": task.id},
+                        )
+                    
                     if span:
                         span.set_attribute("status", "completed")
                     state.update_task(task.id, status=TaskStatus.COMPLETED, result=result)

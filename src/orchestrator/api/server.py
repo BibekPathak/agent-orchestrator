@@ -63,6 +63,12 @@ async def root() -> dict[str, Any]:
             "GET /marketplace/capabilities": "Get available capabilities",
             "GET /marketplace/capabilities/{cap}/agents": "Get agents by capability",
             "GET /marketplace/stats": "Get marketplace stats",
+            "GET /cost/summary": "Get cost summary",
+            "GET /cost/session/{session_id}": "Get session cost",
+            "GET /cost/agent/{agent_name}": "Get agent cost",
+            "GET /cost/models": "Get costs by model",
+            "GET /cost/pricing": "Get pricing models",
+            "DELETE /cost": "Clear cost data",
             "GET /status/{session_id}": "Get session result",
             "POST /agents/register": "Register a custom agent",
             "GET /agents": "List registered agents",
@@ -227,3 +233,57 @@ async def get_marketplace_stats() -> dict[str, Any]:
         "total_agents": len(app.state.orchestrator.marketplace.list_all()),
         "capabilities": app.state.orchestrator.marketplace.get_capability_stats(),
     }
+
+
+@app.get("/cost/summary")
+async def get_cost_summary() -> dict[str, Any]:
+    """Get cost summary for all sessions and agents."""
+    return app.state.orchestrator.cost_tracker.get_summary()
+
+
+@app.get("/cost/session/{session_id}")
+async def get_session_cost(session_id: str) -> dict[str, Any]:
+    """Get cost for a specific session."""
+    cost = app.state.orchestrator.cost_tracker.get_session_cost(session_id)
+    records = app.state.orchestrator.cost_tracker.get_records(session_id=session_id)
+    return {
+        "session_id": session_id,
+        "total_cost": cost,
+        "records": records,
+    }
+
+
+@app.get("/cost/agent/{agent_name}")
+async def get_agent_cost(agent_name: str) -> dict[str, Any]:
+    """Get cost for a specific agent."""
+    cost = app.state.orchestrator.cost_tracker.get_agent_cost(agent_name)
+    records = app.state.orchestrator.cost_tracker.get_records(agent_name=agent_name)
+    return {
+        "agent_name": agent_name,
+        "total_cost": cost,
+        "records": records,
+    }
+
+
+@app.get("/cost/models")
+async def get_model_costs() -> list[dict[str, Any]]:
+    """Get costs grouped by model."""
+    summary = app.state.orchestrator.cost_tracker.get_summary()
+    return [
+        {"model": model, "cost": cost}
+        for model, cost in summary.get("model_costs", {}).items()
+    ]
+
+
+@app.get("/cost/pricing")
+async def get_pricing() -> dict[str, Any]:
+    """Get available pricing models."""
+    from ..cost import MODEL_PRICING
+    return MODEL_PRICING
+
+
+@app.delete("/cost")
+async def clear_costs() -> dict[str, str]:
+    """Clear cost tracking data."""
+    app.state.orchestrator.cost_tracker.clear()
+    return {"status": "cleared"}

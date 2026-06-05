@@ -11,7 +11,7 @@ from huggingface_hub.inference._generated.types.chat_completion import (
     ChatCompletionOutputComplete,
 )
 
-from .base import LLM, LLMConfig
+from .base import LLM, LLMConfig, LLMUsage
 
 
 def _openai_tool_to_hf(tool: dict[str, Any]) -> ChatCompletionInputTool:
@@ -43,6 +43,13 @@ class HuggingFaceLLM(LLM):
             api_key=api_key,
             base_url="https://router.huggingface.co/v1",
         )
+        self._usage = LLMUsage()
+
+    def get_usage(self) -> LLMUsage:
+        return self._usage
+
+    def reset_usage(self) -> None:
+        self._usage = LLMUsage()
 
     async def generate(
         self,
@@ -74,6 +81,10 @@ class HuggingFaceLLM(LLM):
 
         response = await self.client.chat_completion(**kwargs)
         choice: ChatCompletionOutputComplete = response.choices[0]
+
+        if response.usage:
+            self._usage.prompt_tokens = response.usage.prompt_tokens or 0
+            self._usage.completion_tokens = response.usage.completion_tokens or 0
 
         content = choice.message.content or ""
         tool_calls = []

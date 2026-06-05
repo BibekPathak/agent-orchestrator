@@ -14,6 +14,16 @@ class LLMConfig:
     api_key: str | None = None
 
 
+@dataclass
+class LLMUsage:
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    
+    @property
+    def total_tokens(self) -> int:
+        return self.prompt_tokens + self.completion_tokens
+
+
 class LLM(ABC):
 
     @abstractmethod
@@ -26,4 +36,12 @@ class LLM(ABC):
         temperature: float | None = None,
         max_tokens: int | None = None,
     ) -> tuple[str, list[dict[str, Any]]]:
+        ...
+    
+    @abstractmethod
+    def get_usage(self) -> LLMUsage:
+        ...
+    
+    @abstractmethod
+    def reset_usage(self) -> None:
         ...
