@@ -6,6 +6,9 @@ from typing import Any, AsyncIterator
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from ..distributed.executor import DistributedExecutor
+from ..llm.mock_llm import MockLLM
+from pydantic import BaseModel
 
 from ..engine.orchestrator import AgentOrchestrator
 from ..llm.base import LLMConfig
@@ -28,6 +31,9 @@ class AppState:
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state = AppState()
+    llm = MockLLM(LLMConfig(provider="mock"))
+    app.state.distributed = DistributedState()
+    app.state.distributed.executor = DistributedExecutor(llm=llm)
     yield
 
 
@@ -79,6 +85,13 @@ async def root() -> dict[str, Any]:
             "POST /debate/agent-vs-agent": "Run agent-vs-agent debate",
             "POST /debate/critic-loop": "Run critic-reviser loop",
             "GET /debate/types": "Get debate types",
+            "POST /queue/submit": "Submit task to queue",
+            "GET /queue/task/{id}": "Get task status",
+            "GET /queue/stats": "Get queue statistics",
+            "GET /queue/tasks": "List queued tasks",
+            "GET /queue/workers": "List active workers",
+            "POST /queue/task/complete": "Mark task complete",
+            "POST /queue/task/fail": "Mark task failed",
             "GET /status/{session_id}": "Get session result",
             "POST /agents/register": "Register a custom agent",
             "GET /agents": "List registered agents",
@@ -407,6 +420,85 @@ async def get_debate_types() -> list[str]:
     """Get available debate types."""
     from ..debate.types import DebateType
     return [dt.value for dt in DebateType]
+
+
+class DistributedState:
+    def __init__(self) -> None:
+        from ..llm import create_llm, LLMConfig
+        from ..distributed import DistributedExecutor
+        
+        llm = create_llm(LLMConfig())
+        self.executor = DistributedExecutor(llm=llm)
+
+
+class QueueSubmitRequest(BaseModel):
+    goal: str
+    session_id: str | None = None
+
+
+class TaskStatusRequest(BaseModel):
+    task_id: str
+    status: str | None = None
+    result: str | None = None
+    error: str | None = None
+
+
+@app.post("/queue/submit")
+async def submit_task(req: QueueSubmitRequest) -> dict[str, Any]:
+    """Submit a task to the distributed queue."""
+    task = await app.state.distributed.executor.submit(req.goal, req.session_id)
+    return task.to_dict()
+
+
+@app.get("/queue/task/{task_id}")
+async def get_task(task_id: str) -> dict[str, Any]:
+    """Get task status and result."""
+    task = await app.state.distributed.executor.get_task(task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return task.to_dict()
+
+
+@app.get("/queue/stats")
+async def get_queue_stats() -> dict[str, Any]:
+    """Get queue statistics."""
+    stats = await app.state.distributed.executor.get_stats()
+    return stats.to_dict()
+
+
+@app.get("/queue/tasks")
+async def list_tasks(
+    status: str | None = None,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    """List tasks in the queue."""
+    from ..distributed.types import TaskStatus
+    status_enum = TaskStatus(status) if status else None
+    return await app.state.distributed.executor.list_tasks(status_enum, limit)
+
+
+@app.get("/queue/workers")
+async def list_workers() -> list[dict[str, Any]]:
+    """List active workers."""
+    return app.state.distributed.executor.get_workers()
+
+
+@app.post("/queue/task/complete")
+async def complete_task(req: TaskStatusRequest) -> dict[str, str]:
+    """Mark a task as complete."""
+    success = await app.state.distributed.executor.complete_task(req.task_id, req.result or "")
+    if not success:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return {"status": "completed"}
+
+
+@app.post("/queue/task/fail")
+async def fail_task(req: TaskStatusRequest) -> dict[str, str]:
+    """Mark a task as failed."""
+    success = await app.state.distributed.executor.fail_task(req.task_id, req.error or "Unknown error")
+    if not success:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return {"status": "failed"}
 
 
 @app.delete("/cost")
