@@ -8,6 +8,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from ..distributed.executor import DistributedExecutor
 from ..llm.mock_llm import MockLLM
+from ..mcp import MCPManager, MCPServerConfig
 from pydantic import BaseModel
 
 from ..engine.orchestrator import AgentOrchestrator
@@ -34,6 +35,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     llm = MockLLM(LLMConfig(provider="mock"))
     app.state.distributed = DistributedState()
     app.state.distributed.executor = DistributedExecutor(llm=llm)
+    app.state.mcp = MCPManager()
     yield
 
 
@@ -92,6 +94,11 @@ async def root() -> dict[str, Any]:
             "GET /queue/workers": "List active workers",
             "POST /queue/task/complete": "Mark task complete",
             "POST /queue/task/fail": "Mark task failed",
+            "POST /mcp/servers": "Add MCP server",
+            "GET /mcp/servers": "List MCP servers",
+            "GET /mcp/servers/{name}/tools": "List MCP tools",
+            "POST /mcp/call": "Call MCP tool",
+            "DELETE /mcp/servers/{name}": "Disconnect MCP server",
             "GET /status/{session_id}": "Get session result",
             "POST /agents/register": "Register a custom agent",
             "GET /agents": "List registered agents",
@@ -499,6 +506,70 @@ async def fail_task(req: TaskStatusRequest) -> dict[str, str]:
     if not success:
         raise HTTPException(status_code=404, detail="Task not found")
     return {"status": "failed"}
+
+
+class MCPServerRequest(BaseModel):
+    name: str
+    url: str
+    transport: str = "stdio"
+    env: dict[str, str] = {}
+
+
+class MCPToolCallRequest(BaseModel):
+    server_name: str
+    tool_name: str
+    arguments: dict[str, Any] = {}
+
+
+@app.post("/mcp/servers")
+async def add_mcp_server(req: MCPServerRequest) -> dict[str, Any]:
+    """Add an MCP server connection."""
+    try:
+        config = MCPServerConfig(name=req.name, url=req.url, transport=req.transport, env=req.env)
+        client = app.state.mcp.add_server(config)
+        tools = await client.connect()
+        return {"status": "connected", "server": req.name, "tools": len(tools)}
+    except Exception as e:
+        return {"status": "error", "server": req.name, "error": str(e), "tools": 0}
+
+
+@app.get("/mcp/servers")
+async def list_mcp_servers() -> dict[str, Any]:
+    """List connected MCP servers."""
+    return {"servers": app.state.mcp.list_servers()}
+
+
+@app.get("/mcp/servers/{name}/tools")
+async def list_mcp_tools(name: str) -> dict[str, Any]:
+    """List tools from an MCP server."""
+    client = app.state.mcp.get_server(name)
+    if not client:
+        raise HTTPException(status_code=404, detail="Server not found")
+    return {"tools": [{"name": t.name, "description": t.description, "input_schema": t.input_schema} for t in client.tools]}
+
+
+@app.post("/mcp/call")
+async def call_mcp_tool(req: MCPToolCallRequest) -> dict[str, Any]:
+    """Call an MCP tool."""
+    from ..mcp.types import MCPTool
+    client = app.state.mcp.get_server(req.server_name)
+    if not client:
+        raise HTTPException(status_code=404, detail="Server not found")
+    mcp_tool = MCPTool(name=req.tool_name, description="", input_schema={}, server_name=req.server_name)
+    from ..mcp.types import MCPToolCall
+    result = await client.call_tool(MCPToolCall(tool=mcp_tool, arguments=req.arguments))
+    return {"success": result.success, "result": result.result, "error": result.error}
+
+
+@app.delete("/mcp/servers/{name}")
+async def disconnect_mcp_server(name: str) -> dict[str, Any]:
+    """Disconnect an MCP server."""
+    client = app.state.mcp.get_server(name)
+    if not client:
+        raise HTTPException(status_code=404, detail="Server not found")
+    await client.disconnect()
+    del app.state.mcp._servers[name]
+    return {"status": "disconnected"}
 
 
 @app.delete("/cost")
