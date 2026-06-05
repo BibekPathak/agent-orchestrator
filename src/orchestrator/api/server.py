@@ -55,6 +55,9 @@ async def root() -> dict[str, Any]:
             "POST /run": "Execute a goal",
             "POST /dag": "Generate DAG for a goal (no execution)",
             "GET /dag/{session_id}": "Get DAG for existing session",
+            "GET /events": "Get event history",
+            "GET /events/types": "Get available event types",
+            "DELETE /events": "Clear event history",
             "GET /status/{session_id}": "Get session result",
             "POST /agents/register": "Register a custom agent",
             "GET /agents": "List registered agents",
@@ -138,3 +141,40 @@ async def get_session_dag(session_id: str) -> dict[str, Any]:
     from ..core.task import Plan
     plan = Plan.model_validate(plan_data)
     return plan.to_dag()
+
+
+@app.get("/events")
+async def get_events(
+    event_type: str | None = None,
+    session_id: str | None = None,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    """Get event history."""
+    from ..events.types import EventType
+    
+    event_type_enum = None
+    if event_type:
+        try:
+            event_type_enum = EventType(event_type)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid event type: {event_type}")
+    
+    return app.state.orchestrator.event_bus.get_history(
+        event_type=event_type_enum,
+        session_id=session_id,
+        limit=limit,
+    )
+
+
+@app.get("/events/types")
+async def get_event_types() -> list[str]:
+    """Get list of available event types."""
+    from ..events.types import EventType
+    return [e.value for e in EventType]
+
+
+@app.delete("/events")
+async def clear_events() -> dict[str, str]:
+    """Clear event history."""
+    app.state.orchestrator.event_bus.clear_history()
+    return {"status": "cleared"}
