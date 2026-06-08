@@ -177,7 +177,7 @@ def serve(
     host: str = "0.0.0.0",
     port: int = 8000,
     model: str = "Qwen/Qwen2.5-7B-Instruct",
-    provider: str = "huggingface",
+    provider: str = "mock",
 ) -> None:
     """Start the FastAPI server."""
     import uvicorn

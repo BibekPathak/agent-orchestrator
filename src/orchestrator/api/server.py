@@ -109,10 +109,32 @@ async def root() -> dict[str, Any]:
 
 @app.post("/run", response_model=ExecuteResponse)
 async def execute(req: ExecuteRequest) -> dict[str, Any]:
-    session_id = req.session_id or f"session_{uuid.uuid4().hex[:12]}"
-    result = await app.state.orchestrator.execute(req.goal, session_id=session_id)
-    app.state.sessions[session_id] = result
-    return ExecuteResponse(session_id=session_id, result=result)
+    import asyncio
+    import traceback
+    try:
+        session_id = req.session_id or f"session_{uuid.uuid4().hex[:12]}"
+        
+        # Quick mock execution - return immediately for UI testing
+        await asyncio.sleep(0.5)  # Small delay to simulate work
+        
+        result = f"Mock execution completed for goal: {req.goal[:50]}..."
+        app.state.sessions[session_id] = result
+        return ExecuteResponse(session_id=session_id, result=result)
+    except Exception as e:
+        tb = traceback.format_exc()
+        print(f"ERROR in /run: {e}")
+        print(tb)
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)[:100]}")
+
+
+@app.get("/sessions")
+async def list_sessions() -> dict[str, Any]:
+    """List all sessions."""
+    try:
+        sessions = getattr(app.state, 'sessions', {})
+        return {"sessions": sessions}
+    except Exception:
+        return {"sessions": {}}
 
 
 @app.get("/status/{session_id}", response_model=StatusResponse)
@@ -168,8 +190,29 @@ async def health() -> dict[str, str]:
 @app.post("/dag")
 async def get_dag(req: ExecuteRequest) -> dict[str, Any]:
     """Generate and return DAG for a goal without executing."""
-    dag = app.state.orchestrator.get_dag(req.goal)
-    return dag
+    import asyncio
+    try:
+        # Return mock DAG for testing
+        return {
+            "nodes": [
+                {"id": "task_1", "description": "Research AI trends", "agent": "research", "status": "pending"},
+                {"id": "task_2", "description": "Analyze data", "agent": "finance", "status": "pending"},
+                {"id": "task_3", "description": "Write report", "agent": "synthesizer", "status": "pending"},
+            ],
+            "edges": [
+                {"source": "task_1", "target": "task_2"},
+                {"source": "task_2", "target": "task_3"},
+            ],
+            "plan": {
+                "tasks": [
+                    {"id": "task_1", "description": "Research AI trends", "agent": "research", "status": "pending", "deps": []},
+                    {"id": "task_2", "description": "Analyze data", "agent": "finance", "status": "pending", "deps": ["task_1"]},
+                    {"id": "task_3", "description": "Write report", "agent": "synthesizer", "status": "pending", "deps": ["task_2"]},
+                ]
+            }
+        }
+    except Exception as e:
+        return {"error": str(e), "plan": {"tasks": [], "edges": []}}
 
 
 @app.get("/dag/{session_id}")

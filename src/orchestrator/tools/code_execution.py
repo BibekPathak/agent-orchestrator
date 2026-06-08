@@ -7,16 +7,34 @@ from contextlib import redirect_stdout, redirect_stderr
 from typing import Any
 
 from ..core.tool import Tool
+from ..sandbox import get_sandbox_config, SandboxTool
 
 
 class PythonExecutionTool(Tool):
     def __init__(self) -> None:
+        config = get_sandbox_config()
+        self._use_sandbox = config.provider == "e2b" and config.api_key
+        self._sandbox_tool = SandboxTool() if self._use_sandbox else None
+        
         super().__init__(
             name="python_execute",
             description="Execute Python code and return the output. Use this for calculations, data processing, and running scripts.",
         )
 
     async def execute(self, code: str) -> str:
+        if self._use_sandbox and self._sandbox_tool:
+            result = await self._sandbox_tool.execute(code=code)
+            if result.get("success"):
+                output = result.get("output", "")
+                error = result.get("error")
+                if error:
+                    return f"Error:\n{error}\n\nOutput:\n{output}"
+                return output or "Code executed successfully (no output)"
+            return f"Error: {result.get('error', 'Unknown error')}"
+        
+        return await self._execute_local(code)
+
+    async def _execute_local(self, code: str) -> str:
         """Execute Python code and capture stdout, stderr, and return value."""
         # Security: Only allow safe operations
         # Block dangerous imports and operations
