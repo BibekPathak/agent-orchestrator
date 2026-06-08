@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from ..distributed.executor import DistributedExecutor
 from ..llm.mock_llm import MockLLM
 from ..mcp import MCPManager, MCPServerConfig
+from ..sandbox import get_sandbox_manager
 from pydantic import BaseModel
 
 from ..engine.orchestrator import AgentOrchestrator
@@ -36,6 +37,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.distributed = DistributedState()
     app.state.distributed.executor = DistributedExecutor(llm=llm)
     app.state.mcp = MCPManager()
+    app.state.sandbox = get_sandbox_manager()
     yield
 
 
@@ -620,3 +622,70 @@ async def clear_costs() -> dict[str, str]:
     """Clear cost tracking data."""
     app.state.orchestrator.cost_tracker.clear()
     return {"status": "cleared"}
+
+
+class SandboxCreateRequest(BaseModel):
+    template: str | None = None
+
+
+class SandboxExecuteRequest(BaseModel):
+    code: str
+    timeout: int = 30
+
+
+class SandboxUploadRequest(BaseModel):
+    path: str
+    content: str
+
+
+@app.post("/sandbox/create")
+async def create_sandbox(req: SandboxCreateRequest) -> dict[str, Any]:
+    """Create a new sandbox."""
+    tool = app.state.sandbox.get_tool()
+    sandbox_id = await tool._client.create_sandbox(template=req.template)
+    return {"sandbox_id": sandbox_id, "status": "created"}
+
+
+@app.post("/sandbox/{sandbox_id}/execute")
+async def execute_in_sandbox(sandbox_id: str, req: SandboxExecuteRequest) -> dict[str, Any]:
+    """Execute code in a sandbox."""
+    tool = app.state.sandbox.get_tool()
+    tool._sandbox_id = sandbox_id
+    result = await tool.execute(code=req.code)
+    return result
+
+
+@app.get("/sandbox/{sandbox_id}/files")
+async def list_sandbox_files(sandbox_id: str) -> dict[str, Any]:
+    """List files in a sandbox."""
+    tool = app.state.sandbox.get_tool()
+    files = await tool._client.list_files(sandbox_id)
+    return {"sandbox_id": sandbox_id, "files": files}
+
+
+@app.post("/sandbox/{sandbox_id}/upload")
+async def upload_to_sandbox(sandbox_id: str, req: SandboxUploadRequest) -> dict[str, Any]:
+    """Upload a file to sandbox."""
+    tool = app.state.sandbox.get_tool()
+    success = await tool._client.upload_file(sandbox_id, req.path, req.content.encode())
+    return {"sandbox_id": sandbox_id, "path": req.path, "success": success}
+
+
+@app.get("/sandbox/{sandbox_id}/download/{path:path}")
+async def download_from_sandbox(sandbox_id: str, path: str) -> dict[str, Any]:
+    """Download a file from sandbox."""
+    tool = app.state.sandbox.get_tool()
+    content = await tool._client.download_file(sandbox_id, path)
+    if content is None:
+        raise HTTPException(status_code=404, detail="File not found")
+    return {"sandbox_id": sandbox_id, "path": path, "content": content.decode()}
+
+
+@app.post("/sandbox/{sandbox_id}/kill")
+async def kill_sandbox(sandbox_id: str) -> dict[str, Any]:
+    """Kill a sandbox."""
+    tool = app.state.sandbox.get_tool()
+    success = await tool._client.kill_sandbox(sandbox_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Sandbox not found")
+    return {"sandbox_id": sandbox_id, "status": "killed"}
