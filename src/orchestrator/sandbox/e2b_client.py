@@ -22,9 +22,12 @@ class E2BClient:
             raise ValueError("E2B_API_KEY not set")
 
         from e2b import Sandbox
-        template_name = template or self.template or "python"
         
-        sandbox = Sandbox(template=template_name, api_key=self.api_key)
+        if template:
+            sandbox = Sandbox.create(template=template, api_key=self.api_key)
+        else:
+            sandbox = Sandbox.create(api_key=self.api_key)
+        
         sandbox_id = sandbox.sandbox_id
         self._sandboxes[sandbox_id] = sandbox
         return sandbox_id
@@ -39,11 +42,13 @@ class E2BClient:
             )
 
         try:
-            result = sandbox.run_code(code, timeout=timeout)
+            python_code = f'python -c "{code.replace('"', '\\"')}"'
+            result = sandbox.commands.run(python_code, timeout=timeout)
             return ExecutionResult(
-                success=True,
-                output=result.output,
-                logs=result.logs
+                success=result.exit_code == 0,
+                output=result.stdout,
+                error=result.stderr if result.exit_code != 0 else None,
+                logs=result.stderr
             )
         except Exception as e:
             return ExecutionResult(
