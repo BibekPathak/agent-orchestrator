@@ -7,7 +7,7 @@ from contextlib import redirect_stdout, redirect_stderr
 from typing import Any
 
 from ..core.tool import Tool
-from ..sandbox import get_sandbox_config, SandboxTool
+from ..sandbox import get_sandbox_config, SandboxTool, SelfHealingExecutor
 
 
 class PythonExecutionTool(Tool):
@@ -15,10 +15,11 @@ class PythonExecutionTool(Tool):
         config = get_sandbox_config()
         self._use_sandbox = config.provider == "e2b" and config.api_key
         self._sandbox_tool = SandboxTool() if self._use_sandbox else None
+        self._self_healer = SelfHealingExecutor(self._sandbox_tool or self)
         
         super().__init__(
             name="python_execute",
-            description="Execute Python code and return the output. Use this for calculations, data processing, and running scripts.",
+            description="Execute Python code and return the output. Use this for calculations, data processing, and running scripts. The tool automatically retries and fixes common errors.",
         )
 
     async def execute(self, code: str) -> str:
@@ -33,6 +34,25 @@ class PythonExecutionTool(Tool):
             return f"Error: {result.get('error', 'Unknown error')}"
         
         return await self._execute_local(code)
+
+    async def execute_with_healing(self, code: str, llm=None) -> str:
+        """Execute code with automatic error fixing."""
+        if self._use_sandbox and self._sandbox_tool:
+            healer = SelfHealingExecutor(self._sandbox_tool, llm)
+            result = await healer.execute_with_healing(code)
+            if result["success"]:
+                attempts = result["attempts"]
+                output = result["output"]
+                if attempts > 1:
+                    return f"[Self-healed after {attempts} attempts]\n{output}"
+                return output
+            else:
+                return f"Error after {result['attempts']} attempts:\n{result['error']}"
+        
+        result = await self._execute_local(code)
+        if result.startswith("Error"):
+            return f"[Self-healing not available for local execution]\n{result}"
+        return result
 
     async def _execute_local(self, code: str) -> str:
         """Execute Python code and capture stdout, stderr, and return value."""
